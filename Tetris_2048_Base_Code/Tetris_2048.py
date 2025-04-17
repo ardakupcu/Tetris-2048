@@ -10,7 +10,8 @@ from lib.color import Color  # used for coloring the game menu
 import os  # the os module is used for file and directory operations
 from game_grid import GameGrid  # the class for modeling the game grid
 from tetromino import Tetromino  # the class for modeling the tetrominoes
-import random  # used for creating tetrominoes with random types (shapes)
+import random# used for creating tetrominoes with random types (shapes)
+import time
 
 # The main function where this program starts execution
 def start():
@@ -38,62 +39,51 @@ def start():
    # by using the display_game_menu function defined below
    display_game_menu(grid_h, grid_w)
 
+   fall_interval = 0.3 #
+   last_fall_time = time.time()
+
    # the main game loop
    while True:
 
+      start_time = time.time()
       grid.display(next_tetromino)
 
       # check for any user interaction via the keyboard
-      if stddraw.hasNextKeyTyped():  # check if the user has pressed a key
-         key_typed = stddraw.nextKeyTyped()  # the most recently pressed key
-         # if the left arrow key has been pressed
+      if stddraw.hasNextKeyTyped():
+         key_typed = stddraw.nextKeyTyped()
          if key_typed == "left":
-            # move the active tetromino left by one
-            current_tetromino.move(key_typed, grid)
-         # if the right arrow key has been pressed
+            current_tetromino.move("left", grid)
          elif key_typed == "right":
-            # move the active tetromino right by one
-            current_tetromino.move(key_typed, grid)
-         # if the down arrow key has been pressed
+            current_tetromino.move("right", grid)
          elif key_typed == "down":
-            # move the active tetromino down by one
-            # (soft drop: causes the tetromino to fall down faster)
-            current_tetromino.move(key_typed, grid)
+            current_tetromino.move("down", grid)
+            last_fall_time = time.time()  # soft drop sonrası sıfırlama
          elif key_typed == "z":
             current_tetromino.rotate(grid)
-
          elif key_typed == "space":
             current_tetromino.hard_drop(grid)
-         # clear the queue of the pressed keys for a smoother interaction
          stddraw.clearKeysTyped()
 
-      moved = current_tetromino.move("down", grid)
+      current_time = time.time()
+      if current_time - last_fall_time > fall_interval:
+         moved = current_tetromino.move("down", grid)
 
-      if not moved:
-         tiles = current_tetromino.tile_matrix
-         pos = current_tetromino.bottom_left_cell
-         game_over, cleared = grid.update_grid(tiles, pos)
-         if game_over:
-            break
+         if not moved:
+            tiles = current_tetromino.tile_matrix
+            pos = current_tetromino.bottom_left_cell
+            game_over, cleared = grid.update_grid(tiles, pos)
 
-         current_tetromino = next_tetromino
-         next_tetromino = create_tetromino()
-         grid.current_tetromino = current_tetromino
+            if game_over:
+               break  # oyun bitiyorsa dışarı çık
 
-      # move the active tetromino down by one at each iteration (auto fall)
-      success = current_tetromino.move("down", grid)
-      # lock the active tetromino onto the grid when it cannot go down anymore
-      if not success:
-         # get the tile matrix of the tetromino without empty rows and columns
-         # and the position of the bottom left cell in this matrix
-         tiles, pos = current_tetromino.get_min_bounded_tile_matrix(True)
-         # update the game grid by locking the tiles of the landed tetromino
-         game_over, cleared = grid.update_grid(tiles, pos) # end the main game loop if the game is over
-         if game_over:
-            break
+            current_tetromino = next_tetromino
+            next_tetromino = create_tetromino()
+            grid.current_tetromino = current_tetromino
 
-      # display the game grid with the current tetromino
-      grid.display()
+         last_fall_time = current_time  # fall zamanını güncelle (döngü içinde)
+
+      elapsed = time.time() - start_time
+      time.sleep(max(0, 1 / 60 - elapsed))  # 60 FPS
 
    # print a message on the console when the game is over
    print("Game over")

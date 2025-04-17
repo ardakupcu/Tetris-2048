@@ -47,7 +47,7 @@ class GameGrid:
          self.draw_next_tetromino(next_tetromino)
 
       # show the resulting drawing with a pause duration = 250 ms
-      stddraw.show(200)
+      stddraw.show(1)
 
    # A method for drawing the cells and the lines of the game grid
    def draw_grid(self):
