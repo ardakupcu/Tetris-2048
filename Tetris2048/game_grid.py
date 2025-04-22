@@ -77,51 +77,39 @@ class GameGrid:
                row += 1
 
    def remove_floating_tiles_by_falling(self):
-      visited = np.full((self.grid_height, self.grid_width), False)
+    from collections import deque
+    changed = True
 
-      # Step 1: mark all grounded tiles using BFS
-      from collections import deque
-      queue = deque()
+    while changed:
+        changed = False
+        visited = np.full((self.grid_height, self.grid_width), False)
+        queue = deque()
 
-      for col in range(self.grid_width):
-         if self.tile_matrix[0][col] is not None:
-            queue.append((0, col))
-            visited[0][col] = True
+        # Step 1: mark grounded tiles
+        for col in range(self.grid_width):
+            if self.tile_matrix[0][col] is not None:
+                queue.append((0, col))
+                visited[0][col] = True
 
-      while queue:
-         row, col = queue.popleft()
-         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            r, c = row + dy, col + dx
-            if self.is_inside(r, c) and not visited[r][c] and self.tile_matrix[r][c] is not None:
-               visited[r][c] = True
-               queue.append((r, c))
+        while queue:
+            row, col = queue.popleft()
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                r, c = row + dy, col + dx
+                if self.is_inside(r, c) and not visited[r][c] and self.tile_matrix[r][c] is not None:
+                    visited[r][c] = True
+                    queue.append((r, c))
 
-      # Step 2: collect floating tiles (not visited)
-      floating = []
-      for row in range(self.grid_height):
-         for col in range(self.grid_width):
-            if self.tile_matrix[row][col] is not None and not visited[row][col]:
-               floating.append((row, col))
+        # Step 2: move unvisited (floating) tiles down by one row
+        floating = []
+        for row in range(self.grid_height - 1, -1, -1):  # bottom-up
+            for col in range(self.grid_width):
+                if self.tile_matrix[row][col] is not None and not visited[row][col]:
+                    # Try to move down if the space is empty
+                    if self.is_inside(row - 1, col) and self.tile_matrix[row - 1][col] is None:
+                        self.tile_matrix[row - 1][col] = self.tile_matrix[row][col]
+                        self.tile_matrix[row][col] = None
+                        changed = True  # Mark that a tile fell
 
-      if not floating:
-         return
-
-      # Step 3: fall each floating tile
-      # Process bottom-up to avoid overwriting
-      floating.sort(reverse=True)
-
-      for row, col in floating:
-         tile = self.tile_matrix[row][col]
-         self.tile_matrix[row][col] = None
-         new_row = row
-
-         # Fall until grounded
-         while (new_row > 0 and
-                self.tile_matrix[new_row - 1][col] is None and
-                not visited[new_row - 1][col]):
-            new_row -= 1
-
-         self.tile_matrix[new_row][col] = tile
 
    def draw_grid(self):
       # for each cell of the game grid
