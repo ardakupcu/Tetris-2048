@@ -2,6 +2,7 @@ import lib.stddraw as stddraw  # used for displaying the game grid
 from lib.color import Color  # used for coloring the game grid
 from point import Point  # used for tile positions
 import numpy as np  # fundamental Python module for scientific computing
+from collections import deque  # added by mustafa: for floating tile removal
 
 # A class for modeling the game grid
 class GameGrid:
@@ -16,6 +17,14 @@ class GameGrid:
       self.current_tetromino = None
       # the game_over flag shows whether the game is over or not
       self.game_over = False
+
+      # added by mustafa: 2048 win status
+      self.win = False
+      # added by mustafa: pause status
+      self.paused = False
+      # added by mustafa: score tracking
+      self.score = 0
+
       # set the color used for the empty grid cells
       self.empty_cell_color = Color(42, 69, 99)
       # set the colors used for the grid lines and the grid boundaries
@@ -46,184 +55,165 @@ class GameGrid:
       if next_tetromino is not None:
          self.draw_next_tetromino(next_tetromino)
 
-      # show the resulting drawing with a pause duration = 250 ms
+      # added by mustafa: score and status panel
+      stddraw.setPenColor(self.line_color)
+      stddraw.setFontSize(16)
+      stddraw.text(self.grid_width + 3, self.grid_height - 1, "SCORE")
+      stddraw.boldText(self.grid_width + 3, self.grid_height - 2.5, str(self.score))
+
+      if self.paused:
+         stddraw.boldText(self.grid_width/2, self.grid_height/2, "PAUSED")
+      if self.win:
+         stddraw.boldText(self.grid_width/2, self.grid_height/2, "YOU WIN!")
+      if self.game_over and not self.win:
+         stddraw.boldText(self.grid_width/2, self.grid_height/2, "GAME OVER")
+      # end added by mustafa
+
+      # show the resulting drawing with a pause duration = 1 ms
       stddraw.show(1)
 
-   # A method for drawing the cells and the lines of the game grid
-   def merge_tiles(self):
-      merged = True
-      while merged:
-         merged = False
-         for col in range(self.grid_width):
-            row = 0
-            while row < self.grid_height - 1:
-               current = self.tile_matrix[row][col]
-               above = self.tile_matrix[row + 1][col]
-               if current is not None and above is not None:
-                  if current.number == above.number:
-                     # Merge and mark as merged
-                     current.number *= 2
-                     current.set_colors_by_value()
-                     self.tile_matrix[row + 1][col] = None
-                     merged = True
+   # A method for merging tiles column-wise (2048 chaining)
+   def merge_tiles(self): # added by mustafa: merge_tiles method
+      gained = 0
+      for col in range(self.grid_width):
+         row = 0
+         while row < self.grid_height - 1:
+            current = self.tile_matrix[row][col]
+            above  = self.tile_matrix[row+1][col]
+            if current and above and current.number == above.number:
+               # merge the two tiles
+               current.number *= 2
+               current.set_colors_by_value() # modified by mustafa: update color after merge
+               gained += current.number
+               if current.number == 2048:
+                  self.win = True # added by mustafa: set win on reaching 2048
+               # remove and shift down
+               self.tile_matrix[row+1][col] = None
+               for r in range(row+2, self.grid_height):
+                  self.tile_matrix[r-1][col] = self.tile_matrix[r][col]
+               self.tile_matrix[self.grid_height-1][col] = None
+               # stay on same row for chain merges
+               continue
+            row += 1
+      return gained # added by mustafa: return total merge gain
 
-                     # Shift everything above down
-                     for r in range(row + 2, self.grid_height):
-                        self.tile_matrix[r - 1][col] = self.tile_matrix[r][col]
-                     self.tile_matrix[self.grid_height - 1][col] = None
-
-                     # Stay on same row to allow chain merge
-                     continue
-               row += 1
-
-   def remove_floating_tiles_by_falling(self):
-    from collections import deque
-    changed = True
-
-    while changed:
-        changed = False
-        visited = np.full((self.grid_height, self.grid_width), False)
-        queue = deque()
-
-        # Step 1: mark grounded tiles
-        for col in range(self.grid_width):
-            if self.tile_matrix[0][col] is not None:
-                queue.append((0, col))
-                visited[0][col] = True
-
-        while queue:
-            row, col = queue.popleft()
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                r, c = row + dy, col + dx
-                if self.is_inside(r, c) and not visited[r][c] and self.tile_matrix[r][c] is not None:
-                    visited[r][c] = True
-                    queue.append((r, c))
-
-        # Step 2: move unvisited (floating) tiles down by one row
-        floating = []
-        for row in range(self.grid_height - 1, -1, -1):  # bottom-up
-            for col in range(self.grid_width):
-                if self.tile_matrix[row][col] is not None and not visited[row][col]:
-                    # Try to move down if the space is empty
-                    if self.is_inside(row - 1, col) and self.tile_matrix[row - 1][col] is None:
-                        self.tile_matrix[row - 1][col] = self.tile_matrix[row][col]
-                        self.tile_matrix[row][col] = None
-                        changed = True  # Mark that a tile fell
-
-
-   def draw_grid(self):
-      # for each cell of the game grid
-      for row in range(self.grid_height):
-         for col in range(self.grid_width):
-            # if the current grid cell is occupied by a tile
-            if self.tile_matrix[row][col] is not None:
-               # draw this tile
-               self.tile_matrix[row][col].draw(Point(col, row))
-      # draw the inner lines of the game grid
-      stddraw.setPenColor(self.line_color)
-      stddraw.setPenRadius(self.line_thickness)
-      # x and y ranges for the game grid
-      start_x, end_x = -0.5, self.grid_width - 0.5
-      start_y, end_y = -0.5, self.grid_height - 0.5
-      for x in np.arange(start_x + 1, end_x, 1):  # vertical inner lines
-         stddraw.line(x, start_y, x, end_y)
-      for y in np.arange(start_y + 1, end_y, 1):  # horizontal inner lines
-         stddraw.line(start_x, y, end_x, y)
-      stddraw.setPenRadius()  # reset the pen radius to its default value
-
-   # A method for drawing the boundaries around the game grid
-   def draw_boundaries(self):
-      # draw a bounding box around the game grid as a rectangle
-      stddraw.setPenColor(self.boundary_color)  # using boundary_color
-      # set the pen radius as box_thickness (half of this thickness is visible
-      # for the bounding box as its lines lie on the boundaries of the canvas)
-      stddraw.setPenRadius(self.box_thickness)
-      # the coordinates of the bottom left corner of the game grid
-      pos_x, pos_y = -0.5, -0.5
-      stddraw.rectangle(pos_x, pos_y, self.grid_width, self.grid_height)
-      stddraw.setPenRadius()  # reset the pen radius to its default value
-
-   # A method used checking whether the grid cell with the given row and column
-   # indexes is occupied by a tile or not (i.e., empty)
-   def is_occupied(self, row, col):
-      # considering the newly entered tetrominoes to the game grid that may
-      # have tiles with position.y >= grid_height
-      if not self.is_inside(row, col):
-         return False  # the cell is not occupied as it is outside the grid
-      # the cell is occupied by a tile if it is not None
-      return self.tile_matrix[row][col] is not None
-
-   # A method for checking whether the cell with the given row and col indexes
-   # is inside the game grid or not
-   def is_inside(self, row, col):
-      if row < 0 or row >= self.grid_height:
-         return False
-      if col < 0 or col >= self.grid_width:
-         return False
-      return True
-
-   # A method that locks the tiles of a landed tetromino on the grid checking
-   # if the game is over due to having any tile above the topmost grid row.
-   # (This method returns True when the game is over and False otherwise.)
-   def update_grid(self, tiles_to_lock, blc_position):
-      # necessary for the display method to stop displaying the tetromino
-      self.current_tetromino = None
-      # lock the tiles of the current tetromino (tiles_to_lock) on the grid
-      n_rows, n_cols = len(tiles_to_lock), len(tiles_to_lock[0])
-      for col in range(n_cols):
-         for row in range(n_rows):
-            # place each tile (occupied cell) onto the game grid
-            if tiles_to_lock[row][col] is not None:
-               # compute the position of the tile on the game grid
-               pos = Point()
-               pos.x = blc_position.x + col
-               pos.y = blc_position.y + (n_rows - 1) - row
-               if self.is_inside(pos.y, pos.x):
-                  self.tile_matrix[pos.y][pos.x] = tiles_to_lock[row][col]
-               # the game is over if any placed tile is above the game grid
-               else:
-                  self.game_over = True
-      # return the value of the game_over flag
-      self.merge_tiles()
-      self.remove_floating_tiles_by_falling()
-      lines_cleared = self.clear_full_lines()
-      return self.game_over, lines_cleared
-
-   def clear_full_lines(self):
+   # A method for clearing full horizontal lines
+   def clear_full_lines(self): # modified by mustafa: clear_full_lines signature and return
       lines_cleared = 0
-
+      line_gain     = 0
       row = 0
       while row < self.grid_height:
-         if all(self.tile_matrix[row][col] is not None for col in range(self.grid_width)):
+         if all(self.tile_matrix[row][c] is not None for c in range(self.grid_width)):
+            # add line-clear gain
+            line_gain += sum(self.tile_matrix[row][c].number for c in range(self.grid_width))
+            # shift grid down
             for r in range(row, self.grid_height - 1):
                for c in range(self.grid_width):
-                  self.tile_matrix[r][c] = self.tile_matrix[r + 1][c]
+                  self.tile_matrix[r][c] = self.tile_matrix[r+1][c]
             for c in range(self.grid_width):
                self.tile_matrix[self.grid_height - 1][c] = None
             lines_cleared += 1
          else:
             row += 1
+      return lines_cleared, line_gain # modified by mustafa: return lines cleared and gain
 
-      return lines_cleared
+   # A method for deleting floating tiles and adding their value
+   def remove_floating_tiles(self): # added by mustafa: remove_floating_tiles method
+      visited = np.full((self.grid_height, self.grid_width), False)
+      q = deque([(0, c) for c in range(self.grid_width) if self.tile_matrix[0][c]])
+      while q:
+         r, c = q.popleft()
+         visited[r][c] = True
+         for dr, dc in [(1,0),(-1,0),(0,1),(0,-1)]:
+            nr, nc = r+dr, c+dc
+            if 0 <= nr < self.grid_height and 0 <= nc < self.grid_width:
+               if self.tile_matrix[nr][nc] and not visited[nr][nc]:
+                  q.append((nr, nc))
 
-   def draw_next_tetromino(self, tetromino):
-         from point import Point
+      floating_gain = 0
+      for r in range(self.grid_height):
+         for c in range(self.grid_width):
+            if self.tile_matrix[r][c] and not visited[r][c]:
+               floating_gain += self.tile_matrix[r][c].number
+               self.tile_matrix[r][c] = None
+      return floating_gain # added by mustafa: return total floating tiles gain
 
-         offset_x = self.grid_width + 2
-         offset_y = self.grid_height - 5
+   # A method for drawing the cells and the lines of the game grid
+   def draw_grid(self):
+      for row in range(self.grid_height):
+         for col in range(self.grid_width):
+            if self.tile_matrix[row][col] is not None:
+               self.tile_matrix[row][col].draw(Point(col, row))
+      stddraw.setPenColor(self.line_color)
+      stddraw.setPenRadius(self.line_thickness)
+      start_x, end_x = -0.5, self.grid_width - 0.5
+      start_y, end_y = -0.5, self.grid_height - 0.5
+      for x in np.arange(start_x + 1, end_x, 1):
+         stddraw.line(x, start_y, x, end_y)
+      for y in np.arange(start_y + 1, end_y, 1):
+         stddraw.line(start_x, y, end_x, y)
+      stddraw.setPenRadius()
 
-         tile_matrix = tetromino.tile_matrix
-         n_rows = len(tile_matrix)
-         n_cols = len(tile_matrix[0])
+   # A method for drawing the boundaries around the game grid
+   def draw_boundaries(self):
+      stddraw.setPenColor(self.boundary_color)
+      stddraw.setPenRadius(self.box_thickness)
+      pos_x, pos_y = -0.5, -0.5
+      stddraw.rectangle(pos_x, pos_y, self.grid_width, self.grid_height)
+      stddraw.setPenRadius()
 
+   # Check if a cell is occupied
+   def is_occupied(self, row, col):
+      if not self.is_inside(row, col):
+         return False
+      return self.tile_matrix[row][col] is not None
+
+   # Check if a cell is inside the grid
+   def is_inside(self, row, col):
+      if row < 0 or row >= self.grid_height: return False
+      if col < 0 or col >= self.grid_width:  return False
+      return True
+
+   # Lock tiles of a landed tetromino, then handle scoring
+   def update_grid(self, tiles_to_lock, blc_position): # modified by mustafa: update_grid signature
+      self.current_tetromino = None
+      n_rows, n_cols = len(tiles_to_lock), len(tiles_to_lock[0])
+      for col in range(n_cols):
          for row in range(n_rows):
-            for col in range(n_cols):
-               tile = tile_matrix[row][col]
-               if tile is not None:
-                  position = Point(offset_x + col, offset_y - row)
-                  tile.draw(position, length=1, is_preview=False)
+            if tiles_to_lock[row][col] is not None:
+               pos = Point()
+               pos.x = blc_position.x + col
+               pos.y = blc_position.y + (n_rows - 1) - row
+               if self.is_inside(pos.y, pos.x):
+                  self.tile_matrix[pos.y][pos.x] = tiles_to_lock[row][col]
+               else:
+                  self.game_over = True
 
-         stddraw.setPenColor(self.line_color)
-         stddraw.setFontSize(16)
-         stddraw.text(offset_x + 1, offset_y + 3, "Next")
+      # Merge → Clear Lines → Remove Floating, in that order
+      self.score += self.merge_tiles() # added by mustafa: add merge gain
+      lines_cleared, line_gain = self.clear_full_lines() # added by mustafa: add line-clear gain
+      self.score += line_gain # added by mustafa: add line gain
+      self.score += self.remove_floating_tiles() # added by mustafa: add floating-tile gain
 
+      return self.game_over, lines_cleared # modified by mustafa: update_grid return
+
+   # Draw the next tetromino preview
+   def draw_next_tetromino(self, tetromino):
+      from point import Point
+      offset_x = self.grid_width + 2
+      offset_y = self.grid_height - 5
+
+      tile_matrix = tetromino.tile_matrix
+      n_rows = len(tile_matrix)
+      n_cols = len(tile_matrix[0])
+
+      for row in range(n_rows):
+         for col in range(n_cols):
+            tile = tile_matrix[row][col]
+            if tile is not None:
+               position = Point(offset_x + col, offset_y - row)
+               tile.draw(position, length=1, is_preview=False)
+
+      stddraw.setPenColor(self.line_color)
+      stddraw.setFontSize(16)
+      stddraw.text(offset_x + 1, offset_y + 3, "Next")
