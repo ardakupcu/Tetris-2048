@@ -10,85 +10,103 @@ from lib.color import Color  # used for coloring the game menu
 import os  # the os module is used for file and directory operations
 from game_grid import GameGrid  # the class for modeling the game grid
 from tetromino import Tetromino  # the class for modeling the tetrominoes
-import random# used for creating tetrominoes with random types (shapes)
+import random  # used for creating tetrominoes with random types (shapes)
 import time
 
-# The main function where this program starts execution
+_initialized = False
+
 def start():
-   # set the dimensions of the game grid
-   grid_h, grid_w = 20, 12
-   # set the size of the drawing canvas (the displayed window)
-   canvas_h, canvas_w = 40 * grid_h, 40 * (grid_w + 6)
-   stddraw.setCanvasSize(canvas_w, canvas_h)
-   # set the scale of the coordinate system for the drawing canvas
-   stddraw.setXscale(-0.5, grid_w + 5.5)
-   stddraw.setYscale(-0.5, grid_h - 0.5)
+    grid_h, grid_w = 20, 12
+    global _initialized
+    if not _initialized:
+        stddraw.setCanvasSize(40 * grid_h, 40 * (grid_w + 6))
+        stddraw.setXscale(-0.5, grid_w + 5.5)
+        stddraw.setYscale(-0.5, grid_h - 0.5)
+        _initialized = True
 
-   # set the game grid dimension values stored and used in the Tetromino class
-   Tetromino.grid_height = grid_h
-   Tetromino.grid_width = grid_w
-   # create the game grid
-   grid = GameGrid(grid_h, grid_w)
-   # create the first tetromino to enter the game grid
-   # by using the create_tetromino function defined below
-   current_tetromino = create_tetromino()
-   next_tetromino = create_tetromino()
-   grid.current_tetromino = current_tetromino
+    Tetromino.grid_height = grid_h
+    Tetromino.grid_width = grid_w
 
-   # display a simple menu before opening the game
-   # by using the display_game_menu function defined below
-   display_game_menu(grid_h, grid_w)
+    grid = GameGrid(grid_h, grid_w)
+    current_tetromino = create_tetromino()
+    next_tetromino = create_tetromino()
+    grid.current_tetromino = current_tetromino
 
-   fall_interval = 0.3 #
-   last_fall_time = time.time()
+    display_game_menu(grid_h, grid_w)
 
-   # the main game loop
-   while True:
+    fall_interval = 0.3
+    last_fall_time = time.time()
+    paused = False
 
-      start_time = time.time()
-      grid.display(next_tetromino)
+    while True:
+        start_time = time.time()
+        grid.display(next_tetromino, paused)
 
-      # check for any user interaction via the keyboard
-      if stddraw.hasNextKeyTyped():
-         key_typed = stddraw.nextKeyTyped()
-         if key_typed == "left":
-            current_tetromino.move("left", grid)
-         elif key_typed == "right":
-            current_tetromino.move("right", grid)
-         elif key_typed == "down":
-            current_tetromino.move("down", grid)
-            last_fall_time = time.time()  # soft drop sonrası sıfırlama
-         elif key_typed == "z":
-            current_tetromino.rotate(grid)
-         elif key_typed == "space":
-            current_tetromino.hard_drop(grid)
-         stddraw.clearKeysTyped()
+        if stddraw.hasNextKeyTyped():
+            key_typed = stddraw.nextKeyTyped()
 
-      current_time = time.time()
-      if current_time - last_fall_time > fall_interval:
-         moved = current_tetromino.move("down", grid)
+            if key_typed == "p":
+                paused = not paused
 
-         if not moved:
-            tiles = current_tetromino.tile_matrix
-            pos = current_tetromino.bottom_left_cell
-            game_over, cleared = grid.update_grid(tiles, pos)
+            elif key_typed == "r":
+                return start()
 
-            grid.display() #Görsel Olarak güncelleme
+            elif not paused:
+                if key_typed == "left":
+                    current_tetromino.move("left", grid)
+                elif key_typed == "right":
+                    current_tetromino.move("right", grid)
+                elif key_typed == "down":
+                    current_tetromino.move("down", grid)
+                    last_fall_time = time.time()
+                elif key_typed == "z":
+                    current_tetromino.rotate(grid)
+                elif key_typed == "space":
+                    current_tetromino.hard_drop(grid)
 
-            if game_over:
-               break  # oyun bitiyorsa dışarı çık
+            stddraw.clearKeysTyped()
 
-            current_tetromino = next_tetromino
-            next_tetromino = create_tetromino()
-            grid.current_tetromino = current_tetromino
+        current_time = time.time()
+        if not paused and current_time - last_fall_time > fall_interval:
+            moved = current_tetromino.move("down", grid)
 
-         last_fall_time = current_time  # fall zamanını güncelle (döngü içinde)
+            if not moved:
+                tiles = current_tetromino.tile_matrix
+                pos = current_tetromino.bottom_left_cell
+                game_over, _ = grid.update_grid(tiles, pos)
 
-      elapsed = time.time() - start_time
-      time.sleep(max(0, 1 / 60 - elapsed))  # 60 FPS
+                if game_over or grid.win:
+                    break
 
-   # print a message on the console when the game is over
-   print("Game over")
+                current_tetromino = next_tetromino
+                next_tetromino = create_tetromino()
+                grid.current_tetromino = current_tetromino
+
+            last_fall_time = current_time
+
+        elapsed = time.time() - start_time
+        time.sleep(max(0, 1 / 60 - elapsed))
+
+
+    # Draw the end-game message only once
+    grid.display(None)
+    stddraw.setFontSize(32)
+    end_msg = "YOU WIN!" if grid.win else "GAME OVER"
+    stddraw.text(grid_w / 2, grid_h / 2, end_msg)
+    stddraw.setFontSize(20)
+    stddraw.text(grid_w / 2, grid_h / 2 - 2, "Press R to Restart")
+    stddraw.show(0)  # Display the message once (without freezing)
+
+    # Wait for user input to restart
+    while True:
+        time.sleep(0.05)  # Small sleep to avoid high CPU usage
+        stddraw.show(0)   # Keep the window responsive
+        if stddraw.hasNextKeyTyped():
+            key = stddraw.nextKeyTyped()
+            if key == "r":
+                stddraw.clearKeysTyped()
+                return start()
+
 
 # A function for creating random shaped tetrominoes to enter the game grid
 def create_tetromino():

@@ -16,6 +16,8 @@ class GameGrid:
       self.current_tetromino = None
       # the game_over flag shows whether the game is over or not
       self.game_over = False
+      self.win = False                # win flag
+      self.score = 0                  # total score
       # set the color used for the empty grid cells
       self.empty_cell_color = Color(42, 69, 99)
       # set the colors used for the grid lines and the grid boundaries
@@ -25,30 +27,47 @@ class GameGrid:
       self.line_thickness = 0.002
       self.box_thickness = 10 * self.line_thickness
 
+
    # A method for displaying the game grid
-   def display(self, next_tetromino=None):
+   def display(self, next_tetromino=None, paused=False, message=None):
       # clear the background to empty_cell_color
       stddraw.clear(self.empty_cell_color)
       # draw the game grid
       self.draw_grid()
       # draw the current/active tetromino if it is not None
-      # (the case when the game grid is updated)
       if self.current_tetromino is not None:
          self.current_tetromino.draw()
       # draw a box around the game grid
       self.draw_boundaries()
 
+      # right-panel background
       for x in range(self.grid_width, self.grid_width + 6):
          for y in range(self.grid_height):
             stddraw.setPenColor(self.empty_cell_color)
             stddraw.filledSquare(x, y, 0.5)
 
+      # next piece
       if next_tetromino is not None:
          self.draw_next_tetromino(next_tetromino)
 
-      # show the resulting drawing with a pause duration = 250 ms
+      # score text
+      stddraw.setPenColor(Color(255, 255, 255))
+      stddraw.setFontSize(18)
+      stddraw.text(self.grid_width + 2, self.grid_height - 2, "Score")
+      stddraw.text(self.grid_width + 2, self.grid_height - 4, str(self.score))
+
+      # paused / game messages
+      if paused:
+         stddraw.setFontSize(32)
+         stddraw.text(self.grid_width / 2, self.grid_height / 2, "PAUSED")
+      if message:
+         stddraw.setFontSize(32)
+         stddraw.text(self.grid_width / 2, self.grid_height / 2, message)
+
+      # show the resulting drawing
       stddraw.show(1)
 
+   
    # A method for drawing the cells and the lines of the game grid
    def merge_tiles(self):
       merged = True
@@ -61,18 +80,17 @@ class GameGrid:
                above = self.tile_matrix[row + 1][col]
                if current is not None and above is not None:
                   if current.number == above.number:
-                     # Merge and mark as merged
-                     current.number *= 2
+                     current.number *= 2    # merge
                      current.set_colors_by_value()
+                     self.score += current.number  # add to score
+                     if current.number == 2048:
+                        self.win = True    # win check
                      self.tile_matrix[row + 1][col] = None
                      merged = True
-
-                     # Shift everything above down
+                     # shift tiles above down
                      for r in range(row + 2, self.grid_height):
                         self.tile_matrix[r - 1][col] = self.tile_matrix[r][col]
                      self.tile_matrix[self.grid_height - 1][col] = None
-
-                     # Stay on same row to allow chain merge
                      continue
                row += 1
 
@@ -191,10 +209,12 @@ class GameGrid:
 
    def clear_full_lines(self):
       lines_cleared = 0
-
       row = 0
       while row < self.grid_height:
          if all(self.tile_matrix[row][col] is not None for col in range(self.grid_width)):
+            row_sum = sum(self.tile_matrix[row][c].number for c in range(self.grid_width))
+            self.score += row_sum        # add row value to score
+            # shift everything down
             for r in range(row, self.grid_height - 1):
                for c in range(self.grid_width):
                   self.tile_matrix[r][c] = self.tile_matrix[r + 1][c]
@@ -203,7 +223,6 @@ class GameGrid:
             lines_cleared += 1
          else:
             row += 1
-
       return lines_cleared
 
    def draw_next_tetromino(self, tetromino):
